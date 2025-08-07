@@ -11,3 +11,5 @@ numpy
 torch
 
 together
+pysqlite3-binary
+
