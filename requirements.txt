@@ -2,7 +2,8 @@ streamlit
 python-dotenv
 google-generativeai
 sentence-transformers
-chromadb
+langchain
+faiss-cpu
 PyPDF2
 python-docx
 requests
@@ -11,5 +12,5 @@ numpy
 torch
 
 together
-pysqlite3-binary
+
 

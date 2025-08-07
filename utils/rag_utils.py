@@ -2,34 +2,14 @@ import os
 import PyPDF2
 from docx import Document
 import numpy as np
-import chromadb
+# FAISS is the replacement for ChromaDB
+from langchain_community.vectorstores import FAISS
 from typing import List, Dict, Any, Optional, Tuple
 from models.embeddings import EmbeddingModel
-from config.config import COLLECTION_NAME, VECTOR_DIMENSION
+# These are no longer needed as they were Chroma-specific
+# from config.config import COLLECTION_NAME, VECTOR_DIMENSION
 
-
-def document_exists(self, document_id: str) -> bool:
-    """Check if a document already exists in the vector store.
-    
-    Args:
-        document_id: ID of the document to check
-        
-    Returns:
-        True if document exists, False otherwise
-    """
-    try:
-        # Query for IDs that start with the document ID
-        results = self.collection.query(
-            query_texts=[""],  # Empty query text
-            where={"source": document_id},
-            n_results=1
-        )
-        
-        # If there are any results, the document exists
-        return len(results["ids"][0]) > 0
-    except Exception as e:
-        logger.error(f"Error checking if document exists: {str(e)}")
-        return False
+# --- All of your helper functions below are unchanged ---
 
 def load_document(file_path: str) -> str:
     """Load document content from various file formats.
@@ -133,58 +113,58 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[st
         
     return chunks
 
+# --- The VectorStore class is now updated to use FAISS ---
+
 class VectorStore:
     def __init__(self, embedding_model: EmbeddingModel, persist_dir: Optional[str] = None):
-        """Initialize the vector store.
+        """Initialize the vector store using FAISS.
         
         Args:
             embedding_model: Model for generating embeddings
-            persist_dir: Optional directory for persistence
+            persist_dir: Optional directory for persistence (not used by this in-memory version)
         """
         self.embedding_model = embedding_model
-        self.persist_path = os.path.join(persist_dir, "chroma_db") if persist_dir else None
-        
-        try:
-            # Initialize ChromaDB client with persistence if specified
-            if self.persist_path:
-                os.makedirs(self.persist_path, exist_ok=True)
-                self.client = chromadb.PersistentClient(path=self.persist_path)
-            else:
-                self.client = chromadb.Client()
-            
-            self.collection = self.client.get_or_create_collection(
-                name=COLLECTION_NAME,
-                metadata={"hnsw:space": "cosine"}
-            )
-        except Exception as e:
-            raise Exception(f"Failed to initialize vector store: {e}")
-    
+        self.langchain_embeddings = self.embedding_model.get_embedding_function()
+        self.vector_store: Optional[FAISS] = None # Will hold the FAISS index
+        self.processed_docs = set() # To track existing documents
+
+    def document_exists(self, document_id: str) -> bool:
+        """Check if a document has already been processed."""
+        return document_id in self.processed_docs
+
     def add_documents(self, documents: List[str], document_id: str) -> None:
-        """Add documents to the vector store.
+        """Add documents to the FAISS vector store.
         
         Args:
             documents: List of document chunks
-            document_id: ID of the document
+            document_id: ID of the source document
         """
         try:
-            # Generate IDs for chunks
-            ids = [f"{document_id}_{i}" for i in range(len(documents))]
+            # Create metadata for each chunk, linking it back to the source document
+            metadatas = [{"source": document_id} for _ in documents]
+
+            if self.vector_store is None:
+                # Create a new FAISS index if one doesn't exist
+                self.vector_store = FAISS.from_texts(
+                    texts=documents, 
+                    embedding=self.langchain_embeddings, 
+                    metadatas=metadatas
+                )
+            else:
+                # Add new documents to the existing index
+                self.vector_store.add_texts(
+                    texts=documents, 
+                    metadatas=metadatas
+                )
             
-            # Generate embeddings
-            embeddings = self.embedding_model.get_embeddings(documents)
-            
-            # Add to collection
-            self.collection.add(
-                embeddings=embeddings.tolist(),
-                documents=documents,
-                ids=ids,
-                metadatas=[{"source": document_id} for _ in range(len(documents))]
-            )
+            # Mark this document as processed
+            self.processed_docs.add(document_id)
+
         except Exception as e:
-            raise Exception(f"Error adding documents to vector store: {e}")
+            raise Exception(f"Error adding documents to FAISS vector store: {e}")
     
     def search(self, query: str, top_k: int = 5) -> List[str]:
-        """Search for relevant document chunks.
+        """Search for relevant document chunks in the FAISS index.
         
         Args:
             query: Search query
@@ -193,26 +173,19 @@ class VectorStore:
         Returns:
             List of relevant document chunks with source information
         """
+        if self.vector_store is None:
+            return []
+
         try:
-            # Generate query embedding
-            query_embedding = self.embedding_model.get_embeddings(query)
+            # FAISS similarity search returns LangChain Document objects
+            results = self.vector_store.similarity_search(query, k=top_k)
             
-            # Search collection
-            results = self.collection.query(
-                query_embeddings=query_embedding.tolist(),
-                n_results=top_k,
-                include=["documents", "metadatas"]
-            )
-            
-            if not results or not results.get("documents") or len(results["documents"][0]) == 0:
-                return []
-                
-            # Extract documents and add source information
+            # Format results to match your original output style
             formatted_results = []
-            for i, doc in enumerate(results["documents"][0]):
-                source = results["metadatas"][0][i]["source"] if i < len(results["metadatas"][0]) else "unknown"
-                formatted_results.append(f"From {source}: {doc}")
+            for doc in results:
+                source = doc.metadata.get("source", "unknown")
+                formatted_results.append(f"From {source}: {doc.page_content}")
                 
             return formatted_results
         except Exception as e:
-            raise Exception(f"Error searching vector store: {e}")
+            raise Exception(f"Error searching FAISS vector store: {e}")
