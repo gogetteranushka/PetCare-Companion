@@ -1,1 +1,2 @@
 build-essential
+libsqlite3-dev
