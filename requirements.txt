@@ -1,0 +1,13 @@
+streamlit
+python-dotenv
+google-generativeai
+sentence-transformers
+chromadb
+PyPDF2
+python-docx
+requests
+beautifulsoup4
+numpy
+torch
+
+together
