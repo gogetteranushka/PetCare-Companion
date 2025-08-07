@@ -1,10 +1,12 @@
 from sentence_transformers import SentenceTransformer
 import torch
-from typing import List, Union
+from typing import Union
 import numpy as np
 from config.config import EMBEDDING_MODEL_NAME
+from langchain.embeddings.base import Embeddings
+from typing import List
 
-class EmbeddingModel:
+class EmbeddingModel(Embeddings):
     def __init__(self, model_name: str = EMBEDDING_MODEL_NAME):
         """Initialize the embedding model.
         
@@ -37,3 +39,13 @@ class EmbeddingModel:
             return embeddings
         except Exception as e:
             raise Exception(f"Error generating embeddings: {e}")
+        
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """For LangChain compatibility: embeds a list of documents."""
+        embeddings = self.get_embeddings(texts)
+        return embeddings.tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        """For LangChain compatibility: embeds a single query string."""
+        embedding = self.get_embeddings(text)[0]
+        return embedding.tolist()
