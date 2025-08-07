@@ -13,6 +13,12 @@ from datetime import datetime
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Initialize session state
+if "embedding_model" not in st.session_state:
+    st.session_state.embedding_model = None
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
+
 # Custom CSS with soft brown theme and ULTRA-AGGRESSIVE black bar targeting
 def custom_css():
     return """
@@ -653,251 +659,212 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    
+    # --- All your CSS is applied here ---
+    st.markdown(custom_css(), unsafe_allow_html=True)
+    # This includes your first aggressive styling block
     st.markdown("""
     <style>
-    /* Most aggressive possible fix for chat input text color */
-    input, textarea, [contenteditable="true"] {
-        color: black !important;
-        -webkit-text-fill-color: black !important;
-        font-weight: 600 !important;
-    }
-    
-    /* Target specific Streamlit elements */
-    .stChatInput input, 
-    div[data-testid="stChatInput"] input, 
-    [data-testid="stChatInput"] input, 
-    input.st-emotion-cache-1ln6ewj, 
-    div.st-emotion-cache-w6ut8h, 
-    footer input, 
-    footer input[type="text"], 
-    [data-baseweb="input"] input, 
-    [data-baseweb="base-input"] input, 
-    div.st-emotion-cache-1n76uvr input, 
-    div.st-emotion-cache-1n76uvr > input, 
-    div.st-emotion-cache-qbxlf4,
-    div[data-testid="stChatInputContainer"] input,
-    section[data-testid="stChatMessageFooter"] input {
-        color: black !important;
-        -webkit-text-fill-color: black !important;
-        text-shadow: 0 0 0 black !important;
-    }
-    
-    /* FORCEFUL APPROACH: Use high-contrast color black on white */
-    section[data-testid="stChatMessageFooter"] input,
-    [data-testid="stChatInputContainer"] input {
-        background-color: white !important;
-        color: black !important;
-        -webkit-text-fill-color: black !important;
-        font-weight: 600 !important;
-        text-shadow: none !important;
-    }
+        /* Aggressive possible fix for chat input text color */
+        input, textarea, [contenteditable="true"] {
+            color: black !important;
+            -webkit-text-fill-color: black !important;
+            font-weight: 600 !important;
+        }
+        /* Target specific Streamlit elements */
+        .stChatInput input, 
+        div[data-testid="stChatInput"] input, 
+        [data-testid="stChatInput"] input, 
+        input.st-emotion-cache-1ln6ewj, 
+        div.st-emotion-cache-w6ut8h, 
+        footer input, 
+        footer input[type="text"], 
+        [data-baseweb="input"] input, 
+        [data-baseweb="base-input"] input, 
+        div.st-emotion-cache-1n76uvr input, 
+        div.st-emotion-cache-1n76uvr > input, 
+        div.st-emotion-cache-qbxlf4,
+        div[data-testid="stChatInputContainer"] input,
+        section[data-testid="stChatMessageFooter"] input {
+            color: black !important;
+            -webkit-text-fill-color: black !important;
+            text-shadow: 0 0 0 black !important;
+        }
+        /* FORCEFUL APPROACH: Use high-contrast color black on white */
+        section[data-testid="stChatMessageFooter"] input,
+        [data-testid="stChatInputContainer"] input {
+            background-color: white !important;
+            color: black !important;
+            -webkit-text-fill-color: black !important;
+            font-weight: 600 !important;
+            text-shadow: none !important;
+        }
     </style>
     """, unsafe_allow_html=True)
     
-    # Apply custom CSS
-    st.markdown(custom_css(), unsafe_allow_html=True)
+    # --- Step 1: Initialize Session State ---
+    if "system_ready" not in st.session_state:
+        st.session_state.system_ready = False
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "selected_pet" not in st.session_state:
+        st.session_state.selected_pet = "All species"
+    if "vector_store" not in st.session_state:
+        st.session_state.vector_store = None
+
+    # --- Step 2: Check API Key and Initialize Backend ONCE ---
+    if TOGETHER_API_KEY:
+        if not st.session_state.system_ready:
+            with st.spinner("Initializing models, please wait..."):
+                try:
+                    embedding_model = EmbeddingModel()
+                    st.session_state.vector_store = VectorStore(embedding_model=embedding_model)
+                    st.session_state.llm = TogetherModel()
+                    st.session_state.system_ready = True
+                    st.toast("System ready!")
+                except Exception as e:
+                    st.error(f"Failed to initialize. Check API key in secrets. Error: {e}")
+                    st.session_state.system_ready = False
+    else:
+        st.session_state.system_ready = False
+
+    # --- Step 3: Render UI Based on State ---
     
-    # Initialize session state
-    initialize_session_state()
-    
-    # Show API key form if needed
-    if not st.session_state.get("api_key_validated", False):
-        if st.session_state.get("show_api_form", True):
-            api_key_form()
-            st.divider()
-    
+    # Define variables for sidebar controls to be used later
+    selected_pet = st.session_state.selected_pet
+    response_mode = "concise"
+    use_web_search = True
+
     # Sidebar
     with st.sidebar:
         st.title("PetCare Companion")
         st.write("Your pet care assistant")
         st.markdown("---")
-    
-    # Settings and document upload (only show if API key is valid)
-    if st.session_state.get("api_key_validated", False):
-        with st.sidebar:
-            # Pet selection
+        
+        if st.session_state.system_ready:
             st.subheader("Pet Type")
             selected_pet = st.selectbox(
-                "Select pet type:",
-                PET_SPECIES,
+                "Select pet type:", PET_SPECIES, 
                 index=PET_SPECIES.index(st.session_state.selected_pet),
                 label_visibility="collapsed"
             )
             st.session_state.selected_pet = selected_pet
             
-            # Response mode selection
             st.subheader("Response Style")
             response_mode = st.radio(
-                "Select style:",
-                list(RESPONSE_MODES.keys()),
+                "Select style:", list(RESPONSE_MODES.keys()), 
                 format_func=lambda x: "Concise" if x == "concise" else "Detailed",
-                horizontal=True,
-                label_visibility="collapsed"
+                horizontal=True, label_visibility="collapsed"
             )
             
-            # Web search toggle
             st.subheader("Web Search")
             use_web_search = st.checkbox("Enable web search", value=True)
             
             st.markdown("---")
             
-            # Document upload
             st.subheader("Knowledge Base")
             uploaded_file = st.file_uploader(
-                "Upload documents", 
-                type=["pdf", "docx", "txt", "md", "csv"],
-                label_visibility="collapsed"
+                "Upload documents", type=["pdf", "docx", "txt", "md", "csv"], label_visibility="collapsed"
             )
             
             if uploaded_file:
                 st.write(f"File: {uploaded_file.name}")
                 if st.button("Process Document"):
-                    file_path = save_uploaded_file(uploaded_file)
-                    if file_path:
-                        num_chunks = process_document(file_path, uploaded_file.name)
-                        if num_chunks > 0:
-                            st.success(f"Added {num_chunks} chunks")
-    
-    # Main chat interface
-    if not st.session_state.get("api_key_validated", False):
+                    if st.session_state.vector_store:
+                        file_path = save_uploaded_file(uploaded_file)
+                        if file_path:
+                            num_chunks = process_document(file_path, uploaded_file.name)
+                            if num_chunks > 0:
+                                st.success(f"Added {num_chunks} chunks")
+
+    # Main content area
+    if not st.session_state.system_ready:
         st.title("Welcome to PetCare Companion")
-        st.warning("Please configure a valid Together API key")
-        st.info("You can enter your API key in the form above")
+        st.warning("Please configure a valid Together API key to use this application.")
+        st.info("The app owner must set the API key in the Streamlit Cloud secrets.")
         st.markdown("""
         ### How to get a Together API Key:
         1. Go to the [Together AI website](https://api.together.xyz/settings/api-keys)
         2. Sign in or create an account
         3. Create an API key 
-        4. Copy the key and paste it above
+        4. Add it to this app's secrets in the Streamlit Cloud dashboard
         """)
-        return
-    
-    # Display current date
-    current_date = datetime.now().strftime("%B %d, %Y")
-    st.caption(f"Today: {current_date}")
-    
-    # Welcome header - using just one header now
-    st.markdown("""
-    <div class="welcome-header">
-        <h1>Welcome to PetCare Companion!</h1>
-        <p>Your trusted source for pet care information</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Chat display
-    if not st.session_state.messages:
-        # Welcome message with native Streamlit components
-        st.write("Try asking things like: 'What can my cat eat?, 'Why is my dog barking at night?'")
-        
-        # Feature cards using native Streamlit components
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            with st.container():
-                st.markdown("### Nutrition")
-                st.write("Dietary advice and recommendations for your pet")
-            
-            with st.container():
-                st.markdown("### Behavior")
-                st.write("Training tips and interpreting pet behavior")
-        
-        with col2:
-            with st.container():
-                st.markdown("### Health & Wellness")
-                st.write("Understanding symptoms and preventative care")
-            
-            with st.container():
-                st.markdown("### Seasonal Care")
-                st.write("Safety and seasonal advice for your pet")
     else:
-        # Display chat messages
-        for message in st.session_state.messages:
-            if message["role"] == "user":
-                st.markdown(f"""
-                <div class="user-message-container">
-                    <div class="user-message">{message["content"]}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class="assistant-message-container">
-                    <div class="assistant-message">{message["content"]}</div>
-                </div>
-                """, unsafe_allow_html=True)
-    
-    # Add extra strong styling for the footer chat input - EXTRA AGGRESSIVE APPROACH
-        # Add extra strong styling for the chat input and bottom bar
-    st.markdown("""
-    <style>
-    /* CRITICAL TEXT COLOR FIX - Make text in input field BLACK */
-    [data-testid="stChatInput"] input,
-    div[data-testid="stChatInputContainer"] input,
-    section[data-testid="stChatMessageFooter"] input,
-    .stChatInput input,
-    input[type="text"] {
-        color: #000000 !important;
-        font-weight: 500 !important;
-    }
-    
-    /* Make placeholder text dark and visible */
-    [data-testid="stChatInput"] input::placeholder,
-    div[data-testid="stChatInputContainer"] input::placeholder,
-    section[data-testid="stChatMessageFooter"] input::placeholder,
-    .stChatInput input::placeholder,
-    input[type="text"]::placeholder {
-        color: #4A3B27 !important;
-        opacity: 0.7 !important;
-    }
-    
-    /* Add a direct style attribute to the input - fallback method */
-    body .element-container div[data-testid="stChatMessageFooter"] {
-        --input-text-color: #000000 !important;
-    }
-    </style>
-    
-    <script>
-        // Wait for page to load
-        setTimeout(function() {
-            // Find all input elements and force their color to black
-            var inputs = document.querySelectorAll('input');
-            inputs.forEach(function(input) {
-                input.style.color = '#000000';
-                input.setAttribute('style', 'color: #000000 !important');
-            });
-        }, 1000);
-    </script>
-    """, unsafe_allow_html=True)
-    
-    container = st.container()
-    with container:
+        # Main Chat Interface
+        current_date = datetime.now().strftime("%B %d, %Y")
+        st.caption(f"Today: {current_date}")
+        
+        st.markdown("""
+        <div class="welcome-header">
+            <h1>Welcome to PetCare Companion!</h1>
+            <p>Your trusted source for pet care information</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if not st.session_state.messages:
+            st.write("Try asking things like: 'What can my cat eat?, 'Why is my dog barking at night?'")
+            col1, col2 = st.columns(2)
+            with col1:
+                with st.container(): st.markdown("### Nutrition"); st.write("Dietary advice and recommendations")
+                with st.container(): st.markdown("### Behavior"); st.write("Training tips and interpreting behavior")
+            with col2:
+                with st.container(): st.markdown("### Health & Wellness"); st.write("Understanding symptoms and care")
+                with st.container(): st.markdown("### Seasonal Care"); st.write("Safety and seasonal advice")
+        else:
+            for message in st.session_state.messages:
+                # Your original code used custom markdown for chat messages, 
+                # but st.chat_message is the modern, recommended way.
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+        
+        # All of your aggressive CSS and JS for the chat input is placed here
         st.markdown("""
         <style>
-        /* Force black text in the chat input */
-        [data-testid="stChatInput"] input {color: #000000 !important;}
-        div[data-testid="stChatInputContainer"] input {color: #000000 !important;}
-        .stChatInput input {color: #000000 !important;}
-        input {color: #000000 !important;}
+            /* CRITICAL TEXT COLOR FIX - Make text in input field BLACK */
+            [data-testid="stChatInput"] input,
+            div[data-testid="stChatInputContainer"] input,
+            section[data-testid="stChatMessageFooter"] input,
+            .stChatInput input,
+            input[type="text"] {
+                color: #000000 !important;
+                font-weight: 500 !important;
+            }
+            /* Make placeholder text dark and visible */
+            [data-testid="stChatInput"] input::placeholder,
+            div[data-testid="stChatInputContainer"] input::placeholder,
+            section[data-testid="stChatMessageFooter"] input::placeholder,
+            .stChatInput input::placeholder,
+            input[type="text"]::placeholder {
+                color: #4A3B27 !important;
+                opacity: 0.7 !important;
+            }
         </style>
+        <script>
+            // Wait for page to load
+            setTimeout(function() {
+                var inputs = document.querySelectorAll('input');
+                inputs.forEach(function(input) {
+                    if(input.getAttribute('data-testid') === 'stChatInput') {
+                        input.style.color = '#000000 !important';
+                    }
+                });
+            }, 500);
+        </script>
         """, unsafe_allow_html=True)
         
-        # Now create the chat input
-        prompt = st.chat_input(f"Ask about {st.session_state.selected_pet.lower()} care...")
+        # Handle new chat input
+        if prompt := st.chat_input(f"Ask about {st.session_state.selected_pet.lower()} care..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-    
-    # Handle message submission
-    if prompt:
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Generate and display assistant response
-        with st.spinner("Generating response..."):
-            response = generate_response(prompt, response_mode, st.session_state.selected_pet, use_web_search)
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    response = generate_response(prompt, response_mode, selected_pet, use_web_search)
+                    st.markdown(response)
             
-        # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        
-        # Rerun to update the UI
-        st.rerun()
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.rerun()
 
 def load_knowledge_base_documents():
     """Load and process all text files from the knowledge_base directory."""
