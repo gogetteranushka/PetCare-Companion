@@ -1,25 +1,33 @@
 import os
 import logging
+import streamlit as st
 from typing import Tuple
+# load_dotenv is only needed for local development, not for Streamlit Cloud
 from dotenv import load_dotenv
+
+# --- This part is only for local development ---
+# When running on your computer, this will load variables from .env
+if os.path.exists(".env"):
+    load_dotenv()
+# ---------------------------------------------
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-load_dotenv()
+# --- Universal API Key Loading ---
+# This logic first checks Streamlit's secrets, then falls back to environment variables.
+# This makes the app work both locally and when deployed.
+TOGETHER_API_KEY = st.secrets.get("TOGETHER_API_KEY", os.getenv("TOGETHER_API_KEY"))
+TAVILY_API_KEY = st.secrets.get("TAVILY_API_KEY", os.getenv("TAVILY_API_KEY"))
 
-# API Keys
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 if not TOGETHER_API_KEY:
-    logger.warning("TOGETHER_API_KEY not found in environment variables")
-
-# Tavily API Key for web search
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+    logger.warning("TOGETHER_API_KEY not found. Please set it in Streamlit Cloud secrets or your .env file.")
 if not TAVILY_API_KEY:
-    logger.warning("TAVILY_API_KEY not found in environment variables")
+    logger.warning("TAVILY_API_KEY not found. Please set it in Streamlit Cloud secrets or your .env file.")
+
+# --- The rest of your configuration is unchanged ---
 
 # Embedding Model Settings
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5")
@@ -59,5 +67,6 @@ def validate_together_api_key() -> Tuple[bool, str]:
         Tuple of (is_valid, message)
     """
     if not TOGETHER_API_KEY:
-        return False, "Together API key not found in .env file"
+        # This message is more helpful for deployment
+        return False, "Together API key not found. Please set it in Streamlit Cloud secrets."
     return True, "API key present"
