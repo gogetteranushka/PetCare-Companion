@@ -3,6 +3,7 @@ python-dotenv
 google-generativeai
 sentence-transformers
 langchain
+langchain-community 
 faiss-cpu
 PyPDF2
 python-docx
