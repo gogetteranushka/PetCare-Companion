@@ -1,7 +1,7 @@
 streamlit==1.25.0
 python-dotenv==1.0.0
 sentence-transformers==2.2.2
-langchain==0.0.354
+langchain==0.1.16
 langchain-community==0.0.34
 faiss-cpu==1.7.4
 PyPDF2==3.0.1
@@ -10,5 +10,4 @@ requests==2.31.0
 beautifulsoup4==4.12.2
 numpy==1.25.2
 torch==2.0.1
-together==0.2.0
-
+together==0.2.2
