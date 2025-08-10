@@ -11,5 +11,5 @@ beautifulsoup4==4.12.2
 numpy==1.25.2
 torch==2.1.2
 together==1.1.0
-huggingface_hub==0.19.4
+huggingface_hub==0.10.1
 rich==13.7.0
