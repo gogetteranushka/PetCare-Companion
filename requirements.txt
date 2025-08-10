@@ -1,6 +1,6 @@
 streamlit==1.29.0
 python-dotenv==1.0.0
-sentence-transformers==2.7.0
+sentence-transformers==2.2.2
 langchain==0.1.0
 langchain-community==0.0.1
 faiss-cpu==1.7.4
@@ -10,6 +10,6 @@ requests==2.31.0
 beautifulsoup4==4.12.2
 numpy==1.26.4
 torch==2.1.2
-together==1.1.5
+together==1.1.8
 huggingface_hub==0.19.4
 rich==13.7.0
